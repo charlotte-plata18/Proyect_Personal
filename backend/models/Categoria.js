@@ -1,5 +1,5 @@
 /**
- * MODE CAREGORIA
+ * MODE CATEGORIA
  * define la tabla Categoria en la base de datos
  * almacena las categorias principales de los productos
  */

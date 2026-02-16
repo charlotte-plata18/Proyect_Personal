@@ -1,20 +1,21 @@
 /**
- * MODE CAREGORIA
- * define la tabla Carrito en la base de datos
- * almacena los productos que cada usuario ha agregado a su carrito
+ * MODE DETALLE PEDIDO
+ * define la tabla Detalle Pedido en la base de datos
+ * Almacena los productos incluidos en cada pedido
+ * relación muchos a muchos entre pedidos y productos
  */
-
+ 
 //importar DataTypes de sequelize
 const { DataTypes } = require('sequelize');
 
 //importae instancia de sequelize
 const { sequelize } = require('../config/database');
-const { table } = require('console');
+
 
  /**
-  * Definir el modelo de la Carrito
+  * Definir el modelo detalle pedido
   */
-const Carrito = sequelize.define('Carrito', {
+const DetallePedido = sequelize.define('DetallePedido', {
     //Campos de la tabla
     //Id Identificador unico (PRYMARY KEY)
     id: {
@@ -24,24 +25,7 @@ const Carrito = sequelize.define('Carrito', {
         allowNull: false 
     },
 
-    // UsuarioId ID del usuario dueño del carrito
-    usuarioId: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: 'Usuarios',
-            key: 'id'
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'CASCADE', //si se elimina el usuario se elimina su carrito
-        validate:{
-            notNull: {
-                msg: 'debe especificar usuario'
-            }
-        }
-    },
-
-    // ProductoId ID del producto que se agrega al carrito
+    // ProductoId ID del producto que se agrega al detalle del pedido
     productoId: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -50,19 +34,18 @@ const Carrito = sequelize.define('Carrito', {
             key: 'id'
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE', // se elimina el producto se elimina del carrito
+        onDelete: 'RESTRICT', //si se elimina el producto no se puede eliminar el detalle
         validate:{
             notNull: {
-                msg: 'Debe especificar producto'
+                msg: 'debe especificar UN Producto'
             }
         }
     },
 
-    // Cantidad del producto en el carrito
+    // Cantidad del producto en el detalle del pedido
     cantidad: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        delfaultvalue: 1,
         validate:{
             isInt: {
                 msg: 'La cantidad debe ser un numero entero'
@@ -73,6 +56,30 @@ const Carrito = sequelize.define('Carrito', {
             }
         }
     },
+
+
+    /**
+     * Precio Unitario -precio del producto al momento de agregar al detalle del pedido
+     * se guarda para mantener el precio aunque el producto cambie de precio
+     */
+        precioUnitario: {
+            type: DataTypes.DECIMAL(10,2),
+            allowNull: false,
+            validate :{
+                isDecimal: {
+                    msg: 'El precio unitario debe ser un numero decimal valido'
+                },
+                min:{
+                    args: [0],
+                    msg: 'El precio no puede ser negativo'
+                }
+            }
+        },
+        // Removed duplicate properties and fixed syntax
+    }, { // Removed duplicate properties and fixed syntax
+        // Opciones del modelo
+        tableName: 'carritos',
+        timestamps: true,
 
 
     /**
@@ -91,78 +98,66 @@ const Carrito = sequelize.define('Carrito', {
                 msg: 'El precio no puede ser negativo'
             }
         }
+    },
+    /**
+     * Subtotal calculado como precioUnitario * cantidad
+     * se calcula automaticamente antes de guardar 
+     */
+    subtotal: {
+        type: DataTypes.DECIMAL(10,2),
+        allowNull: false,
+        validate:{
+            isDecimal: {
+                msg: 'El subtotal debe ser un numero decimal valido'
+        },
+        min: {
+            args: [0],
+            msg: 'El subtotal no puede ser negativo'
+        }
     }
-}, {
+}, 
     //Opciones del modelo
-    tableName: 'carritos',
-    timestamps: true,
-    //indices compuestos para optimizar busquedas
+    tableName: 'detalle_pedidos',
+    timestamps: false, // No necesitamos createdAt ni updatedAt para el detalle del pedido
+
+    //indices para mejorar ls busquedas
     indexes: [
         {
-            //indice para buscar por usuario y producto
-            fields: ['usuarioId',]
+            //indice para buscar por detalle por pedido
+             fields: ['pedidoId',]
         },
         {
-            //Indice compuesto: un usuario no puede tener el mismo producto
-            //duplicado
-            unique: true,
-            fields: ['usuarioId', 'productoId'],
-            name: 'usuario_producto_unico'
-        }
-        
+            //indice para buscar por detalle por producto
+            fields: ['productoId',]
+        }, 
     ],
 
+
+
     /**
-     * Hooks Acciones de automaticas
+     * Hooks Acciones automaticas
      */
-
-    hooks:{
+    hooks: {
         /**
-         * beforeCreate - se ejecuta antes de crear una subcategoria
-         * valida qu este activo
+         * beforeCreate - se ejecuta antes de crear un detalle de pedido
+         * calcula el subtotal automaticamente 
          */
-        beforeCreate: async (itemCarrito) =>{
-            const Producto = require ('./Producto');
-
-            // Buscar producto
-            const producto = await Producto.findByPk (itemCarrito.productoId);
-
-            if (!producto) {
-                throw  new Error ( 'El producto  no existe');
-            }
-            if (!producto.activo) {
-                throw new Error ('No se puede crear un item de carrito para un producto inactivo')
-            }
-            if (!producto.haystock (itemCarrito.cantidad)) {
-                throw new Error (`Stock insuficiente, solo hay ${producto.stock} unidades disponibles`)
-            }
-
-            // Guardar el precio actual del producto
-
-            itemCarrito.precioUnitario = producto.precio;
+        beforeCreate:(detalle) =>{
+            //calcular subtotal precio * cantidad
+            detalle.subtotal = parseFloat(detalle.precioUnitario) * detalle.cantidad;
         },
 
         /**
-         * BeforeUpdate - se ejecuta antes de actulizar un caarito
-         * valida que haya stock suficiente si se aumenta la cantidad
+         * BeforeUpdate - se ejecuta antes de actulizar detalle de pedido
+         * recalcular el subtotal si cambia la cantidad o el precio unitario
          */
 
 
-        beforeupdate: async (itemCarrito) => {
+        beforeupdate: (detalle) => {
 
-            if (itemCarrito.changed('cantidad')) {
-                const Producto = require('./Producto');
-                const producto = await Producto.findByPk
-                (itemCarrito.productoId);
-                if (!producto) {
-                    throw new Error('El producto no existe');
-                }
-
-                if (!producto.haystock (itemCarrito.cantidad)) {
-                    throw new Error (`Stock insuficiente, 
-                    solo hay ${producto.stock} unidades
-                    disponibles`);
-                }
+            if (detalle.changed('precioUnitario') ||
+            detalle.changed('cantidad')) {
+                detalle.subtotal = parseFloat(detalle.precioUnitario) * detalle.cantidad;
             }
         }
     }
@@ -170,11 +165,11 @@ const Carrito = sequelize.define('Carrito', {
 
 //METODOS DE INSTANCIA
 /**
- * Metodo para calcular el subtotal de este item
+ * Metodo para calcular el subtotal 
  * 
- * @returns {number} - subtotal (precio * cantidad)
+ * @returns {number} - subtotal cantidad
  */
-Carrito.prototype.calcularSubtotal = function() {
+DetallePedido.prototype.calcularSubtotal = function() {
     return parseFloat(this.precioUnitario) * this.cantidad;
 
 };
@@ -238,19 +233,80 @@ Carrito.calcularTotalCarrito = async function (usuarioId) {
 };
 
 /**
- * Metodo para vaciar el carrito del usuario
- * util despues de realizar un pedido *
- * @param {number} usuarioId - Id del usuario
- * @return {Promise<number>} - numero de items eliminados
+ * Metodo para crear deetalle del pedido desde el carrito
+ * convierte los items del carrito en detalles de pedido
+ * @param {number} pedidoId - Id del pedido
+ * @param {Array} itemsCarrito - Items del carrito
+ * @return {Promise<Array>} - detalles de pedido creados
  */
-Carrito.vaciarCarrito = async function (usuarioId) {
-    return await this.destroy({
-        where: {usuarioId}
-    });
+DetallePedido.crearDesdeCarrito = async function (pedidoId, itemsCarrito) {
+    const detallesCreados = [];
+    for (const item of itemsCarrito) {
+        const detalle = await this.create({
+            pedidoId: pedidoId,
+            productoId: item.productoId,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario
+        });
+        detallesCreados.push(detalle);
+    }
+    return detallesCreados;
+};
+/**
+ * Metodo para calcular el total del pedido a partir de los detalles del pedido, este método toma un array de detalles de pedido como argumento, calcula el subtotal de cada detalle de pedido utilizando el método calcularSubtotal() y luego suma todos los subtotales para obtener el total del pedido, esto permite obtener el monto total que el usuario tendría que pagar por su pedido en función de los detalles del pedido asociados a ese pedido.
+ * @param {number} pedidoId - El ID del pedido para el cual se desea calcular el total del pedido
+ * @returns {promise<number>} El total del pedido calculado a partir de los detalles del pedido asociados al ID del pedido proporcionado, o un error si no se encuentra ningún detalle de pedido para el ID de pedido proporcionado.
+ */
+detallePedido.calcularTotalPedido = async function (pedidoId) {
+  const detalles = await this.findAll({ where: { pedidoId } });
+
+  let total = 0;
+  for (const detalle of detalles) {
+    total += parseFloat(detalle.Subtotal()); //Suma el subtotal de cada detalle al total
+  }
+  return total;
 };
 
-//Exportar el modelo
-module.exports = Carrito;
+carrito.obtenerCarritoUsuario = async function (usuarioId) {
+  const producto = require("./Producto");
+  return await carrito.findAll({
+    where: { usuarioId },
+    include: [
+      {
+        model: producto,
+        as: "producto",
+      },
+    ],
+    order: [["createdAt", "DESC"]], //Ordenar por fecha de creación, el item más reciente primero
+  });
+};
 
+/**
+ * Metodo para obtener el ressumen de productos mas vendidos, este método consulta la base de datos para obtener un resumen de los productos más vendidos, incluyendo el ID del producto, el nombre del producto y la cantidad total vendida, esto permite obtener información valiosa sobre los productos más populares entre los usuarios y tomar decisiones informadas sobre el inventario y las estrategias de marketing.
+ * @param {number} limit - El número máximo de productos más vendidos que se desea obtener en el resumen, este parámetro permite limitar la cantidad de productos que se incluyen en el resumen para enfocarse en los productos más populares.
+ * @return {Promise<Array>} Un array de objetos que representan los productos más vendidos, cada objeto incluye el ID del producto, el nombre del producto y la cantidad total vendida, o un error si no se encuentra ningún detalle de pedido para calcular el resumen de productos más vendidos.
+ */
+detallePedido.obtenerProductosMasVendidos = async function (limit = 10) {
+  const {sequelize } = require("../config/database");
+  return await this.findAll({
+    attributes: [
+        "productoId",
+        [sequelize.fn("SUM", sequelize.col("cantidad")), "totalVendido"]
+    ],
+    group: ["productoId"],
+    order: [[sequelize.fn("SUM", sequelize.fn("cantidad")), "DESC"]],
+    limit: limite 
+  });
+};
 
+/**
+ * Metodo para calcular el total del carrito de un usuario, este método busca todos los items de carrito asociados al ID del usuario proporcionado, calcula el subtotal de cada item (precio unitario * cantidad) y luego suma todos los subtotales para obtener el total del carrito, esto permite obtener el monto total que el usuario tendría que pagar por los productos agregados a su carrito de compras.
+ * @param {number} usuarioId - El ID del usuario para el cual se desea calcular el total del carrito
+ * @returns {Promise<number>} El total del carrito calculado a partir de los items de carrito asociados al usuario, o un error si no se encuentra ningún item de carrito para el usuario proporcionado.
+ */
+carrito.calcularTotalCarrito = async function (usuarioId) {
+  const items = await carrito.findAll({ where: { usuarioId } });
+};
 
+//Exportar el modelo de carrito para ser utilizado en otras partes de la aplicación
+module.exports = carrito;

@@ -200,7 +200,7 @@ const crearCategoria = async (req, res) =>{
 
 const actualizaCategoria = async (req, res) =>{
     try{
-        const{id} = req.param;
+        const{id} = req.params;
         const {nombre, descripcion} =req.body;
 
         //buscar categoria

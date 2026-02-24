@@ -1,6 +1,6 @@
 /**
- * Controlador de subcategoria
- * maneja las operaciones crudy activa y/o desactiva subcategorias
+ * Controlador de productos
+ * maneja las operaciones crud activa y/o desactiva productos
  * solo para administrador
  */
 
@@ -8,25 +8,28 @@
  * importar modelos
  */
 
+const Producto = require ('../models/Producto');
 const Subcategoria = require ('../models/Subcategoria');
 const Categoria = require ('../models/Categoria');
-const Producto = require ('../models/Producto');
+
 
 
 /**
- * obtener todas las subcategorias
+ * obtener todos los productos
  * query params
  * categoriaId: Id de la categoria
+ * subcategoriaId: Id de la subcategoria
  * Activo true/false (filtar por estado)
  * incluir categoria true / false (incluir categorias relacionadas)
+ * incluir subcategoria true / false (incluir subcategorias relacionadas)
  * 
  * @param {Object} req request expre
  * @param {Object} res response express
  */
 
-const getSubcategorias = async (req, res) => {
+const getProductos = async (req, res) => {
     try {
-        const {categoriaId,subcategoriaId,activo, incluirCategoria, IncluirSubcategoria }= req.query;
+        const {subcategoriaId,activo, incluirSubategoria }= req.query;
         
         // Opciones de consulta
         const opciones = {
@@ -37,7 +40,6 @@ const getSubcategorias = async (req, res) => {
         //filtro
         const where = {};
         if (categoriaId) where.categoriaId = categoriaId;
-        if (subcategoriaId) where.id = subcategoriaId;
         if (activo !==undefined) where.activo = activo === 'true';
 
         if (Object.keys(where).length > 0) {
@@ -47,7 +49,7 @@ const getSubcategorias = async (req, res) => {
 
         // incluir categorias si se solicita
 
-        if (incluirCategoria === 'true'){
+        if (incluirCategorias === 'true'){
             opciones.include == [{
                 model: Categoria,
                 as: 'categoria', //campos del alias para la relacion

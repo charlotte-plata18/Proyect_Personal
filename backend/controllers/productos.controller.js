@@ -352,24 +352,25 @@ const actualizaProducto = async (req, res) =>{
 
         // valdacion si se cambia el nombre que no exita la categoria con el mismo nombre
         if (nombre && nombre !== producto.nombre) {
-            const categoriafinal = categoriaId || producto.categoriaId; // usar el nuevo categoriaId si se proporciona, de lo contrario usar el existente
-            const subcategoriaConMismoNombre = await Subcategoria.findOne({
+            const subcategoriaFinal = subcategoriaId || producto.subcategoriaId; // usar el nuevo subcategoriaId si se proporciona, de lo contrario usar el existente
+            const productoConMismoNombre = await Producto.findOne({
                 where: {
                     nombre,
-                    categoriaId: categoriafinal
+                    subcategoriaId: subcategoriaFinal
                 }
             });
 
-            if (subcategoriaConMismoNombre) {
+            if (productoConMismoNombre) {
                 return res.status(400).json({
                     success:false,
-                    message:`Ya existe una subcategoria con el nombre "${nombre}" en la categoria `
+                    message:`Ya existe un producto con el nombre "${nombre}" en la subcategoria ${subcategoriaFinal}`
                 });
             }
         }
 
         // Actualizar campos
         if (nombre!==undefined) subcategoria.nombre = nombre;
+        if (descripcion!==undefined) subcategoria.descripcion = descripcion;
         if (descripcion!==undefined) subcategoria.descripcion = descripcion;
         if (categoriaId!==undefined) subcategoria.categoriaId = categoriaId;
         if (activo!==undefined) subcategoria.activo = activo;

@@ -1,7 +1,6 @@
 /**
- * Controlador de usuario ADMIN
- * maneja las gestiones de usuarios de administrador
- * lista de usuarios activa/ y desactiva
+ * Controlador de autenticacion
+ * maneja el registro, login  yobtencion del perfil de usuario
  */
 
 /**
@@ -9,7 +8,7 @@
  */
 
 const Usuario = require ('../models/Usuario');
-
+const {generarToken} = require ('../config/jwt');
 
 
 /**
@@ -23,136 +22,52 @@ const Usuario = require ('../models/Usuario');
  * @param {Object} res response express
  */
 
-const getUsuarios   = async (req, res) => {
+const registrar  = async (req, res) => {
     try {
-        const {rol, activo, buscar, pagina = 1, limite = 10 }= req.query;
+        const {nombre,apellido,email, password, telefono, direccion }= req.query;
 
-        //Construir los filtros
-        const where = {}
-        if(rol) where.rol = rol;
-        if (activo !== undefined) where.activo = activo === 'true';
 
-        //Busqueda por texto
-        if(buscar){
-            const {Op} = require('sequelize');
-            where[Op.or] = [
-                {nombre: { [Op.like]: `%${buscar}%`}},
-                {apellido: { [Op.like]: `%${buscar}%`}},
-                {email: { [Op.like]: `%${buscar}%`}},
-            ];
+        //Validacion1 verificar que todos los campos requerido esten presentes
+        if(!nombre  || !apellido || !email || !password){
+            return res.status(400).json({
+                seccess: false,
+                message: 'faltan campos requeridos: nombre, apellido, email y password son obligatorios'
+            });
         }
-
-        //paginacion
-        const offset = (parseInt(pagina) - 1) * parseInt(limite);
-
-        //obtener usuarios sin password
-        const {count, row:usuarios} = await Usuario.findAndCountAll({
-            where,
-            attributes: {exclude: ['password']},
-            limit:parseInt(limite),
-            offset,
-            order:[['createdAt','DESC']]
-        });
-
-        // respuesta exitosa
-        res.json({
-            success: true,
-            data: {
-                usuarios,
-                paginacion: {
-                    total: count,
-                    pagina: parseInt(pagina),
-                    limite: parseInt (limite),
-                    totalPaginas: Math.ceil(count / parseInt (limite)),
-                }
-            }
-        })
-    }catch (error){
-        console.error('Error en getUsuarios:', error),
-        res.status(500).json({
-            success:false,
-            message: 'Error en al obtener el usuario',
-            error: message.error
-        })
-    }
-}
-/**
- * obtener todas las usuario por id
- * GET/ api/usuario/:id
- * 
- * @param {Object} req request express
- * @param {Object} res response express
- */
-
-const getUsuarioById = async (req, res) => {
-    try {
-        const {id}= req.params;
-        
-        // Buscar usuarios con subusuario y contar productos
-        const usuario = await usuario.findByPk (id,{
-            attributes:{exclude: ['password']}
-        });
-        
-        if (!usuario){
-            return res.status(404).json({
-                success: false,
-                message: 'Usuario no encontrada'
+        // validacion 2 verificar formato email 
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if(!emailRegex.test(email)){
+            return res.status(400).json({
+                seccess:false,
+                message: 'formato no valido'
             });
         }
 
+        // validacion 3 verificar la longitud de la contraseña
+        if(password.length < 6){
+            return res.status(400).json({
+                seccess:false,
+                message: 'la contraseña debe tener al menos 6 caracteres'
+            })
+        }
 
-        //Respuesta exitosa
-        res.json({
-            success:true,
-            data:{
-                usuario
-            }
-        });
-
-    } catch (error){
-        console.error('Error en getUsuarioById', error);
-        res.status(500).json ({
-            success:false,
-            message: 'Error al obtener el usuario',
-            error: error.message,
+    // validacion 4 verificar que el email no este registrado
+    const usuarioExistente = await Usuario.findOne({ where:{email}});
+    if(usuarioExistente){
+        return res.status(400).json({
+            seccess:false,
+            messasge: 'email ya esta registrado'
         })
     }
-};
+
 
 /**
  * Crear nuevo usuario
- * POST / api/admin/usuario
- * Body: { nombre, apellido, email, password, rol, telefono, direccion}
+ * el hook beforecreate en el modelo se encarga de hashear la contraseña antes de guardala
+ * en el rol por defecto es cliente
  * @param {Object} req request express
  * @param {Object} res response express
  */
-
-const crearUsuario = async (req, res) =>{
-    try{
-
-        const {nombre, apellido, email, password, rol, telefono, direccion} = res.body;
-        if(!nombre || !apellido  || !email || !password || !rol) {
-            return res.status(400).json({
-                success:false,
-                message: 'Faltan campos requeridos: nombre, apellido, email, password, rol'
-            });
-        }
-        //validar rol
-        if (!['cliente', 'auxiliar', 'administradores'].includes(rol)){
-            return res.status(400).json({
-                success: false,
-                message: 'Rol invalido debe ser cliente, auxiliar o administrador'
-            });
-        }
-
-        //validar email unico
-        const usuarioExistente = await Usuario.findOne({where: {email}});
-        if (usuarioExistente){
-            return res.status(400).json({
-                success: false,
-                message: `ya existe un usuario con ese email: ${email}`
-            });
-        }
         
         // crear usuario
         const nuevoUsuario = await Usuario.create({
@@ -163,34 +78,143 @@ const crearUsuario = async (req, res) =>{
             rol,
             telefono: telefono || null,
             direccion: direccion || null, // si no se proporciona se establece como null
+            rol: ' cliente '
         });
 
+        // generarl el token JWT con datos del usuario
+        const token = generarToken({
+            id:nuevoUsuario.Id,
+            email:nuevoUsuario.email,
+            rol:nuevoUsuario.rol
+        })
+
         // respuesta exitosa
+        const usuarioRespuesta = nuevoUsuario.toJSON();
+        delete usuarioRespuesta.password // elimina el campo de contraseña
         res.status(201).json({
-            success:true,
-            message: ' Usuario creado exitosamente',
+            seccesss:true,
+            message: ' Usuario registrado exitosamente',
             data:{
-                usuario:nuevoUsuario.tojson // convertir en Json para excluir campos sencibles
+                usuario:usuarioRespuesta,
+                token
             }
         });
 
     } catch (error){
         console.error('Error en crearUsuario', error);
-        if(error.name === 'SequelizeValidationError'){
-        return res.status(400).json({
-            success: false,
+        return res.status(500).json({
+            seccesss: false,
             message:'Error de validacion',
-            errors: error.errors.map(e => e.message)
+            errors: error.message
         
         });
     }
-    res.status(500).json({
-        success:false,
-        message: 'Error al crear usuario',
-        error:error.message
-    })
-}
 };
+
+/**
+ * iniciar sesion login
+ * autenticar un ususario con email y contraseña 
+ * retornar el usuario y un token JWT si las credenciales son correctas
+ * POST/api/auth/login
+ * bodu:{amail. password}
+ */
+
+const login = async (req, res) => {
+    try{
+        // Extraes creenciales del body 
+        const {email, password} =req.body;
+
+        //validacion 1; varificar la contraseña que se proporciona email y password
+        if(!email || !password){
+            return res.status(400).json({
+                seccesss: false,
+                message: ' email y contraseña son requeridos'
+            })
+        }
+
+        //validacion2 buscar usuario por email
+        // necesitamos incluir el password aqui normalmente se excluye por segurirdad 
+        const usuario = await Usuario.scope('withPassword').findOne({
+            where:{email}
+        });
+
+        if(!usuario) {
+            return res.status(401).json({
+                seccess: false,
+                message: 'creenciales invalidas'
+            });
+        }
+        // Validacion3 verificar que el usuario esta activo 
+        if(!usuario,activo){
+            return res.status(401).json({
+                success:false,
+                message:'Usuario inactivo, contacte al administrador'
+            });
+        }
+
+        //validacion 4 varificar la contraseña
+        // usando el metodo comparapassword del modelo usuario
+        const passwordValida = await usuario.compararPassword(password);
+
+        if(!passwordValida){
+            return  res.status(401).json({
+                success: false,
+                message: 'credenciales invalidas'
+            });
+        }
+
+        // Generar token JWT con datos basicos del usuario
+        const token = generarToken({
+            id:usuario.id,
+            email: usuario.email,
+            rol:usuario.rol
+       });
+
+       //preparar respuesta si password 
+       const usuarioSinPassword = usuario.toJSON();
+       delete usuarioSinPassword.password;
+       
+       //respuesta exitosa
+       res.json({
+        success:true,
+        message: 'inicio de sesion exitoso',
+        data:{
+            usuario: usuarioSinPassword,
+            token
+        }
+       })
+
+    }catch(error){
+        console.error('error en login', error)
+        res.status(500).json({
+            seccesss:false,
+            message:'Error al iniciar usuario',
+            error: error.message
+
+        });
+    }
+};
+
+/**
+ * Obtener el perfil del usuario autenticado
+ * require middleware verificarAuth
+ * Get/api/auth/me
+ * headers: (authorization: 'bearer Token')
+ */
+
+const getMe = async (req, res) => {
+    try {
+        //El usuarioya esta en req.usuario
+        const usuario = await Usuario.findByPk(req.usuario.id, {
+            attributes: {exclude: ['password']}
+        });
+
+        if
+    }catch(error){
+
+    }
+}
+
 
 /**
  * Actualiza Usuario
@@ -210,7 +234,7 @@ const actualizaUsuario = async (req, res) =>{
         
         if(!usuario) {
             return res.status(404).json({
-                success : false,
+                seccesss : false,
                 message: 'Usuario no encontrada',
             })
         }
@@ -218,7 +242,7 @@ const actualizaUsuario = async (req, res) =>{
         // validacion rol si se proporciona
         if (rol && !['cliente', 'auxiliar', 'administrador'].includes(rol)){
             return res.status(400).json({
-                success:false,
+                seccesss:false,
                 message:`rol invalido`
             });
         }
@@ -236,7 +260,7 @@ const actualizaUsuario = async (req, res) =>{
 
         // respuesta exitosa
         res.json({
-            success: true,
+            seccesss: true,
             message: 'usuario actualizada exitosamente',
             data:{
                 usuarios: usuario.toJSON()
@@ -246,7 +270,7 @@ const actualizaUsuario = async (req, res) =>{
          }catch (error){
             console.error('Error en actualizarUsuario:', error);
             return res.status(500).json({
-                success:false,
+                seccesss:false,
                 message: 'Error al actulizar usuario',
                 errors: error.message
             });
@@ -274,7 +298,7 @@ const toggleUsuario = async (req, res) => {
 
         if(!usuario) {
             return res.status(404).json ({
-                success: false,
+                seccesss: false,
                 message: 'usuario no encontrado'
             });
         }
@@ -282,7 +306,7 @@ const toggleUsuario = async (req, res) => {
         // no permitir desactivar el propio admin 
         if(usuario.id === req.usuario.id){
             return res.status(400).json({
-                success: false,
+                seccesss: false,
                 message: `no puedes desactivar tu propia cuenta`
             });
         }
@@ -292,7 +316,7 @@ const toggleUsuario = async (req, res) => {
         await usuario.save();
 
         res.json({
-            success: true,
+            seccesss: true,
             message: `Usuario ${usuario.activo ? 'activado': 'desactivado'} exitosamente`,
             date:{
                 usuario: usuario.toJSON()
@@ -302,7 +326,7 @@ const toggleUsuario = async (req, res) => {
     }catch(error){
         console.error('Error en toogleUsurario:', error);
         res.status(500).json({
-            success:false,
+            seccesss:false,
             message:' Error al cambiar esatdo del usuario',
             error:error.message
         });
@@ -324,7 +348,7 @@ const eliminarUsuario = async (req, res) => {
 
         if (!usuario) {
             return res.status(404).json({
-                success: false,
+                seccesss: false,
                 message: 'usuario no encontrado'
             });
         }
@@ -332,7 +356,7 @@ const eliminarUsuario = async (req, res) => {
         // no permitir al promio Admin
         if(usuario.id === req.usuario.id) {
             return res.status(400).json({
-                success: false,
+                seccesss: false,
                 message: 'no puedes eliminar tu propia cuenta'
             });
        }
@@ -340,13 +364,13 @@ const eliminarUsuario = async (req, res) => {
 
         // Respuesta exitosa
         res.json({
-                success: true,
+                seccesss: true,
                 message: 'usuario eliminada exitosamente'
             });
         } catch (error){
         console.error('Error al eliminarUsuario:', error);
         res.status(500).json({
-            success:false,
+            seccesss:false,
             message: 'Error al eliminar usuario',
             error: error.message
         });
@@ -374,7 +398,7 @@ const getEstadisticaUsuarios = async (req, res) => {
 
         //respuesta exitosa
         res.json({
-            success:true,
+            seccesss:true,
             data:{
                 total:totalUsuarios,
                 porRol:{
@@ -390,7 +414,7 @@ const getEstadisticaUsuarios = async (req, res) => {
     }catch (error){
         console.error('Error en getEstadisticausuario:', error);
         res.status(500).json({
-            success:false,
+            seccesss:false,
             message: 'Error al obtener estadisticas de la usuario',
             error: error.message
         })

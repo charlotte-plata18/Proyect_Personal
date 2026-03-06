@@ -236,20 +236,19 @@ const getMe = async (req, res) => {
 
 
 /**
- * Actualiza Usuario
- * PUT/ api/ admin/usuario/:id
- * body:{ nombre, apellido, email, password, rol, telefono, direccion}
+ * Actualiza  perdil del Usuario
+ * permite al usuario actualizar su informacion personal
+ * PUT/ api/auth/me
  * @param {Object} req request express
  * @param {Object} res response express
  */
 
-const actualizaUsuario = async (req, res) =>{
+const updateMe = async (req, res) =>{
     try{
-        const{id} = req.params;
-        const {nombre, apellido, telefono, direccion, rol} =req.body;
+        const {nombre, apellido, telefono, direccion} =req.body;
 
         //buscar usuario
-        const usuario = await Usuario.findByPk(id);
+        const usuario = await Usuario.findByPk(req.usuario.id);
         
         if(!usuario) {
             return res.status(404).json({
@@ -258,20 +257,12 @@ const actualizaUsuario = async (req, res) =>{
             })
         }
         
-        // validacion rol si se proporciona
-        if (rol && !['cliente', 'auxiliar', 'administrador'].includes(rol)){
-            return res.status(400).json({
-                seccesss:false,
-                message:`rol invalido`
-            });
-        }
-
         // Actualizar campos
         if (nombre!==undefined) usuario.nombre = nombre;
         if (apellido!==undefined) usuario.apellido = apellido;
         if (telefono!==undefined) usuario.telefono= telefono;
         if (direccion!==undefined) usuario.direccion = direccion;
-        if (rol!==undefined) usuario.rol = rol;
+
     
 
         // guardar cambios
@@ -280,174 +271,91 @@ const actualizaUsuario = async (req, res) =>{
         // respuesta exitosa
         res.json({
             seccesss: true,
-            message: 'usuario actualizada exitosamente',
+            message: 'perfilactualizada exitosamente',
             data:{
                 usuarios: usuario.toJSON()
             }
         });
     
          }catch (error){
-            console.error('Error en actualizarUsuario:', error);
+            console.error('Error en updateMe:', error);
             return res.status(500).json({
                 seccesss:false,
-                message: 'Error al actulizar usuario',
+                message: 'Error al actulizar perfil',
                 errors: error.message
             });
         }
     };
 
+    /**
+     * cambiar la contraseñadel usuario authenticado
+     * permite al usuario cambiar su contraseña 
+     * requiere su contraseña actual por seguridad
+     * PUT/api/Auth/cahnge-password
+     */
 
-/**
- * Activar/Desactivar usuario
- * PATCH/api/admin/usuarios/:id/estado
- * 
- * Al desactivar una usuario se desacctican tosa las subusuarios relacionadas
- * al desactivar una subusuario se desactivan todos los productos
- * 
- * @param {Object} req request Express
- * @param {Object} res response Express
- */
+    const chagePassword = async (req, res) => {
+        try{
+            const{passwordActual,passwordNuevo} = req.body;
 
-const toggleUsuario = async (req, res) => {
-    try{
-        const {id} =req.params;
-
-        // Buscar usuario
-        const usuario = await Usuario.findByPk(Id);
-
-        if(!usuario) {
-            return res.status(404).json ({
-                seccesss: false,
-                message: 'usuario no encontrado'
-            });
-        }
-
-        // no permitir desactivar el propio admin 
-        if(usuario.id === req.usuario.id){
-            return res.status(400).json({
-                seccesss: false,
-                message: `no puedes desactivar tu propia cuenta`
-            });
-        }
-        
-
-        usuario.activo = !usuario.activo;
-        await usuario.save();
-
-        res.json({
-            seccesss: true,
-            message: `Usuario ${usuario.activo ? 'activado': 'desactivado'} exitosamente`,
-            date:{
-                usuario: usuario.toJSON()
+            //validacion 1verificar que se proporcione ambas contraseñas
+            if(!passwordActual||!passwordNuevo){
+                return res.status(400).json({
+                    success: false,
+                    message: 're queriere contraseña actual y nueva contraseña'
+                });
             }
-        });
 
-    }catch(error){
-        console.error('Error en toogleUsurario:', error);
+            //validacion 2 
+            if(!passwordActual.legth < 6){
+                return res.status(400).json({
+                    success: false,
+                    message: 're queriere contraseña actual debe tener al menos 6 caracteres'
+                });
+            };
+
+            // validacion 3 buscar que el usuario con password incluido 
+            const usuario = await Usuario.scope(`withpassword`).findByPk(req.usuario.id);
+            if(!usuario){
+                return res.status(400).json({
+                    success: false,
+                    message: 'usuario no encontrado'
+                });
+            }
+            // validacion 4  verificar que la contraseña actual se la correcta
+            const passwordValida = await usuario.compararPassword(passwordActual);
+            if(!passwordActual){
+                return res.status(400).json({
+                    success: false,
+                    message: 'contraseña  actual incorrecta'
+                });
+            }
+
+            // actualizar contraseña 
+            usuario.password = passwordNuevo;
+            await usuario.save();
+
+            // respuesta exitosa
+            res.json({
+                success:true,
+                message: 'contraseña actualizadaexitosamente'
+            })
+        }catch (error) {
+        console.error('Error en chagePassword', error);
         res.status(500).json({
-            seccesss:false,
-            message:' Error al cambiar esatdo del usuario',
-            error:error.message
-        });
-    }
-};
-/**
- * Eliminar usuario
- * DELETE /api/admin/usuario/:id
- * @param {Object} req request express
- * @param {Object} res response express
-*/
-
-const eliminarUsuario = async (req, res) => {
-    try {
-        const {id} = req.params;
-
-        //Buscar usuario
-        const usuario = await Usuario.findByPk(id);
-
-        if (!usuario) {
-            return res.status(404).json({
-                seccesss: false,
-                message: 'usuario no encontrado'
-            });
-        }
-
-        // no permitir al promio Admin
-        if(usuario.id === req.usuario.id) {
-            return res.status(400).json({
-                seccesss: false,
-                message: 'no puedes eliminar tu propia cuenta'
-            });
-       }
-       await usuario.destroy();
-
-        // Respuesta exitosa
-        res.json({
-                seccesss: true,
-                message: 'usuario eliminada exitosamente'
-            });
-        } catch (error){
-        console.error('Error al eliminarUsuario:', error);
-        res.status(500).json({
-            seccesss:false,
-            message: 'Error al eliminar usuario',
+            success: false,
+            message: 'Error al cambiar contraseña',
             error: error.message
         });
-
     }
-};
-
-/**
- * Obtener una estadistica de un usuario
- * GET /api/admin/usuario/:id/estadistica
- * @param {Object} req request express
- * @param {Object} res response express
- */
-
-const getEstadisticaUsuarios = async (req, res) => {
-    try {
-        //datos de ususario
-        const totalUsuarios = await Usuario.count();
-        const totalClientes = await Usuario.count({where:{rol: 'cleinte'}});
-        const totalAdmins = await Usuario.count({where: {ro:'adiministrador'}});
-        const usuariosActivos= await Usuario.count({where:{activo: true}});
-        const usuariosInactivo = await Usuario.count({where: { activo: false}});
-
-        
-
-        //respuesta exitosa
-        res.json({
-            seccesss:true,
-            data:{
-                total:totalUsuarios,
-                porRol:{
-                   cliente: totalClientes,
-                   administrador: totalAdmins,
-                },
-                porEstado:{
-                    activos:usuariosActivos,
-                    incativos:usuariosInactivo
-                },
-            }
-        })
-    }catch (error){
-        console.error('Error en getEstadisticausuario:', error);
-        res.status(500).json({
-            seccesss:false,
-            message: 'Error al obtener estadisticas de la usuario',
-            error: error.message
-        })
-    }
-};
+}
 
 
 //Exportar todos los controladores
 module.exports = {
-    getUsuarios,
-    getUsuarioById,
-    crearUsuario,
-    actualizaUsuario,
-    toggleUsuario,
-    eliminarUsuario,
-    getEstadisticaUsuarios
+    registrar,
+    login,
+    getMe,
+    updateMe,
+    chagePassword
 };

@@ -22,7 +22,7 @@ const {generarToken} = require ('../config/jwt');
  * @param {Object} res response express
  */
 
-const registrar  = async (req, res) => {
+const register  = async (req, res) => {
     try {
         const {nombre,apellido,email, password, telefono, direccion }= req.query;
 
@@ -353,7 +353,7 @@ const updateMe = async (req, res) =>{
 
 //Exportar todos los controladores
 module.exports = {
-    registrar,
+    register,
     login,
     getMe,
     updateMe,
